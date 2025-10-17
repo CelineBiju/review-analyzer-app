@@ -1,51 +1,66 @@
-import os
-# Disable file watchers to avoid watch limit error
-os.environ['STREAMLIT_WATCHDOG_PATHS'] = "[]"
-
 import streamlit as st
 from transformers import pipeline
+import traceback
 
-# Initialize pipelines (CPU only)
-sentiment_pipeline = pipeline("sentiment-analysis", device=-1)
-summarizer = pipeline("summarization", device=-1)
+st.set_page_config(page_title="Customer Review Analyzer", page_icon="📝")
 
-# Layout
-st.set_page_config(page_title="Review Analyzer", layout="centered")
-st.title("🧠 Customer Review Analyzer")
+st.title("📝 Customer Review Analyzer")
+st.markdown("Analyze customer feedback using sentiment analysis and summarization.")
 
-st.markdown("""
-This app:
-- ✅ Detects sentiment (Positive / Negative)
-- ✏️ Summarizes reviews if they’re long enough
-""")
+# User Input
+review = st.text_area("Enter your customer review here:")
 
-review = st.text_area("✍️ Paste your review:", height=200)
-
-if st.button("Analyze Review") and review.strip():
-    # Sentiment
+# Load models safely
+@st.cache_resource
+def load_models():
     try:
-        sentiment = sentiment_pipeline(review)[0]
-        st.subheader("💬 Sentiment")
-        st.write(f"**Sentiment:** {sentiment['label']} ({sentiment['score']:.2f})")
+        sentiment = pipeline(
+            "sentiment-analysis",
+            model="distilbert-base-uncased-finetuned-sst-2-english",
+            device=-1  # CPU
+        )
+        summary = pipeline(
+            "summarization",
+            model="sshleifer/distilbart-cnn-12-6",
+            device=-1  # CPU
+        )
+        return sentiment, summary
     except Exception as e:
-        st.error(f"Sentiment analysis error: {e}")
+        st.error("❌ Failed to load models.")
+        st.text(traceback.format_exc())
+        return None, None
 
-    # Summary
-    st.subheader("📄 Summary")
-    word_count = len(review.split())
-    if word_count < 40:
-        st.info("Review too short for summarization.")
+sentiment_pipeline, summarizer = load_models()
+
+if st.button("Analyze Review"):
+    if not review.strip():
+        st.warning("⚠️ Please enter a review before clicking 'Analyze Review'.")
+    elif not sentiment_pipeline or not summarizer:
+        st.error("❌ Models not loaded. Check logs.")
     else:
         try:
-            summary = summarizer(
-                review,
-                max_length=60,
-                min_length=25,
-                do_sample=False
-            )[0]['summary_text']
-            st.write(summary)
-        except Exception as e:
-            st.error(f"Summarization error: {e}")
+            # Sentiment
+            sentiment_result = sentiment_pipeline(review)[0]
+            label = sentiment_result['label']
+            score = sentiment_result['score']
 
-else:
-    st.info("Please paste a review and click 'Analyze Review'.")
+            st.subheader("🔍 Sentiment Analysis")
+            st.write(f"**Sentiment:** {label} ({score:.2f})")
+
+            # Summarization
+            st.subheader("📄 Summary")
+            if len(review.split()) < 30:
+                st.info("ℹ️ Review too short to summarize.")
+            else:
+                summary_result = summarizer(
+                    review,
+                    max_length=60,
+                    min_length=25,
+                    do_sample=False
+                )
+                summary_text = summary_result[0]['summary_text']
+                st.write(summary_text)
+
+        except Exception as e:
+            st.error("❌ An error occurred while processing the review.")
+            st.text(traceback.format_exc())
