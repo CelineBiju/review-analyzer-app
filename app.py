@@ -1,56 +1,39 @@
 import streamlit as st
 from transformers import pipeline
 
-# Initialize pipelines with CPU
+# Load models using CPU
 sentiment_pipeline = pipeline("sentiment-analysis", device=-1)
-summarizer = pipeline("summarization", model="facebook/bart-large-cnn", device=-1)
+summarizer = pipeline("summarization", device=-1)
 
-# Streamlit app layout
-st.set_page_config(page_title="Customer Review Analyzer", layout="centered")
+# App layout
+st.set_page_config(page_title="Review Analyzer", layout="centered")
 st.title("🧠 Customer Review Analyzer")
-st.markdown(
-    "Enter a customer review below. The app will:\n"
-    "- Analyze its **sentiment** (Positive/Negative)\n"
-    "- Generate a **summary** (if the review is long enough)"
-)
+st.markdown("""
+Enter a customer review. This app will:
+- ✅ Analyze the sentiment (Positive/Negative)
+- ✏️ Summarize the review if it's long
+""")
 
-# User input
-review_text = st.text_area("✍️ Paste your review here:", height=200)
+# Input
+review = st.text_area("✍️ Paste your review here:", height=200)
 
-# Button click
-if st.button("Analyze Review") and review_text.strip():
+if st.button("Analyze Review") and review.strip():
+    # --- Sentiment Analysis ---
+    sentiment = sentiment_pipeline(review)[0]
+    st.subheader("💬 Sentiment Analysis")
+    st.write(f"**Sentiment:** {sentiment['label']} ({sentiment['score']:.2f})")
 
-    # Run sentiment analysis
-    sentiment_result = sentiment_pipeline(review_text)[0]
-    sentiment_label = sentiment_result['label']
-    sentiment_score = sentiment_result['score']
+    # --- Summarization ---
+    st.subheader("📄 Summary")
+    word_count = len(review.split())
 
-    # Show sentiment result
-    st.subheader("🔍 Sentiment Analysis")
-    st.write(f"**Sentiment:** {sentiment_label} ({sentiment_score:.2f})")
-
-    # Show original review
-    st.subheader("📄 Original Review")
-    st.write(review_text)
-
-    # Summarization: only if review is long enough
-    if len(review_text.split()) > 30:
+    if word_count > 30:
         try:
-            summary_result = summarizer(
-                review_text,
-                max_length=30,
-                min_length=10,
-                do_sample=False
-            )[0]
-            summary = summary_result['summary_text']
+            summary = summarizer(review, max_length=60, min_length=20, do_sample=False)[0]['summary_text']
+            st.write(summary)
         except Exception as e:
-            summary = "⚠️ Could not generate summary due to an error."
+            st.warning("⚠️ Couldn't summarize this review.")
     else:
-        summary = "✏️ Review too short for summarization. Here's the original review."
-
-    # Show summary
-    st.subheader("📝 Summary")
-    st.write(summary)
-
+        st.info("Review too short for summarization.")
 else:
-    st.info("Please enter a review and click **Analyze Review**.")
+    st.info("Please paste a review and click 'Analyze Review'.")
